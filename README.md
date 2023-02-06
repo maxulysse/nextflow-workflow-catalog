@@ -1,2 +1,3 @@
-# snakemake-workflow-catalog
-A statically generated catalog of available Snakemake workflows
+# nextflow-workflow-catalog
+
+A statically generated catalog of available Nextflow workflows

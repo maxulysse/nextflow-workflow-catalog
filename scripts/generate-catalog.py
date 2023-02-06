@@ -39,13 +39,6 @@ with open("skips.json", "r") as f:
 
 blacklist = set(l.strip() for l in open("blacklist.txt", "r"))
 
-snakefmt_version = (
-    sp.run(["snakefmt", "--version"], capture_output=True, check=True)
-    .stdout.decode()
-    .strip()
-    .split()[-1]
-)
-
 repos = []
 skips = []
 
@@ -158,21 +151,12 @@ def check_repo_exists(g, full_name):
         return False
 
 
-@call_rate_limit_aware_decorator
-def check_file_exists(repo, file_name):
-    try:
-        repo.get_contents(file_name)
-        return True
-    except UnknownObjectException:
-        return False
-
-
 if test_repo is not None:
     repo_search = [g.get_repo(test_repo)]
     total_count = 1
 else:
     repo_search = g.search_repositories(
-        "snakemake workflow in:readme archived:false", sort="updated"
+        "nextflow in:readme archived:false", sort="updated"
     )
     total_count = call_rate_limit_aware(
         lambda: repo_search.totalCount, api_type="search"
@@ -223,52 +207,6 @@ for i in range(total_count):
         logging.info("Repo hasn't changed, skipping again based on old data.")
         skips.append(prev_skip)
         continue
-
-    snakefile = "Snakefile"
-    rules = "rules"
-    if check_file_exists(repo, "workflow"):
-        snakefile = "workflow/" + snakefile
-        rules = "workflow/" + rules
-
-    if not check_file_exists(repo, snakefile):
-        log_skip("of missing Snakefile")
-        register_skip(repo)
-        continue
-
-    if check_file_exists(repo, rules):
-        skip_rules = False
-        skip_repo = False
-        while True:
-            rule_contents = call_rate_limit_aware(lambda: repo.get_contents(rules))
-            if isinstance(rule_contents, ContentFile):
-                # not a directory
-                if rule_contents.type == "symlink":
-                    rules = os.path.normpath(
-                        rules + "/" + rule_contents.raw_data["target"]
-                    )
-                    if check_file_exists(repo, rules):
-                        logging.info("following symlink to %s", rules)
-                    else:
-                        log_skip(
-                            "of invalid symlink encountered while searching for rules folder"
-                        )
-                        skip_repo = True
-                        break
-                else:
-                    # rules folder is neither a dir nor a symlink, ignore
-                    skip_rules = True
-                    break
-            else:
-                break
-        if skip_repo:
-            register_skip(repo)
-            continue
-        if not skip_rules and not any(
-            rule_file.name.endswith(".smk") for rule_file in rule_contents
-        ):
-            log_skip("rule modules are not using .smk extension")
-            register_skip(repo)
-            continue
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
@@ -321,32 +259,6 @@ for i in range(total_count):
         if config_readme_path.exists():
             with open(config_readme_path, "r") as f:
                 config_readme = f.read()
-
-        # linting
-        try:
-            out = sp.run(
-                ["snakemake", "--lint"], capture_output=True, cwd=tmp, check=True
-            )
-        except sp.CalledProcessError as e:
-            linting = e.stderr.decode()
-            if test_repo is not None:
-                logging.error(linting)
-
-        # formatting
-        snakefiles = [workflow / "Snakefile"] + list(rules.glob("*.smk"))
-        fmt_mode = "--check" if test_repo is None else "--diff"
-        try:
-            sp.run(
-                ["snakefmt", fmt_mode, "-v"] + snakefiles,
-                cwd=tmp,
-                check=True,
-                stderr=sp.STDOUT,
-                stdout=sp.PIPE,
-            )
-        except sp.CalledProcessError as e:
-            formatting = e.stdout.decode()
-            if test_repo is not None:
-                logging.error(formatting)
 
     call_rate_limit_aware(
         lambda: repos.append(

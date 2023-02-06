@@ -1,4 +1,4 @@
-name: snakemake-workflow-catalog
+name: nextflow-workflow-catalog
 channels:
   - conda-forge
   - bioconda
@@ -6,6 +6,4 @@ dependencies:
   - jinja2
   - pygithub
   - gitpython
-  - snakemake
-  - snakefmt
   - python >=3.9
